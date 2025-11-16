@@ -242,7 +242,7 @@
                     <div class="flex items-center justify-between mb-6">
                         <div>
                             <h2 class="text-2xl font-bold text-gray-800">收集模式 / Collection Mode</h2>
-                            <p class="text-sm text-gray-500 mt-1">选择单次录入、连续录入或文本输入模式</p>
+                            <p class="text-sm text-gray-500 mt-1">选择单次录入或连续录入模式</p>
                         </div>
                         <div class="text-right">
                             <div class="text-3xl font-bold text-blue-600">${entries.length}</div>
@@ -251,7 +251,7 @@
                     </div>
 
                     ${!isListening ? `
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <button
                                 onclick="startRecording(false)"
                                 class="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
@@ -269,12 +269,6 @@
                                 <div class="text-xl font-bold mb-1">连续录入 / Continuous</div>
                                 <div class="text-sm opacity-90">多次说话，每次自动添加</div>
                             </button>
-
-                            <div class="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl shadow-lg">
-                                <div class="mb-3">📝</div>
-                                <div class="text-xl font-bold mb-1">文本输入 / Text</div>
-                                <div class="text-sm opacity-90">手动输入或粘贴</div>
-                            </div>
                         </div>
 
                         <div class="mt-6 p-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200">
