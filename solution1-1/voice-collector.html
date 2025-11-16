@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>药品信息快速收集器 / Medicine Voice Collector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .listening-pulse {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+    <div id="app" class="max-w-4xl mx-auto p-6"></div>
+
+    <script>
+        const icons = {
+            mic: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
+            micOff: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
+            trash: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+            download: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
+            edit: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
+            check: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+            x: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>'
+        };
+
+        let entries = [];
+        let isListening = false;
+        let isContinuousMode = false;
+        let recognition = null;
+        let hasStartedOnce = false;
+        let editingIndex = -1;
+        let editingText = '';
+
+        // Initialize speech recognition
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'zh-CN';
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.trim();
+                if (transcript) {
+                    entries.push({
+                        id: Date.now(),
+                        text: transcript,
+                        timestamp: new Date().toLocaleString('zh-CN')
+                    });
+                    saveEntries();
+                    
+                    // In continuous mode, automatically restart
+                    if (isContinuousMode && isListening) {
+                        setTimeout(() => {
+                            if (isListening) {
+                                recognition.start();
+                            }
+                        }, 300);
+                    } else {
+                        isListening = false;
+                    }
+                }
+                render();
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                
+                if (event.error === 'not-allowed') {
+                    alert('⚠️ 麦克风权限被拒绝！\n\n请按以下步骤操作：\n1. 点击地址栏左边的🔒图标\n2. 找到"麦克风"选项\n3. 改为"允许"\n4. 刷新页面后重试');
+                    isListening = false;
+                } else if (event.error === 'no-speech') {
+                    // In continuous mode, just restart
+                    if (isContinuousMode && isListening) {
+                        setTimeout(() => {
+                            if (isListening) {
+                                recognition.start();
+                            }
+                        }, 300);
+                    } else {
+                        isListening = false;
+                    }
+                } else if (event.error === 'aborted') {
+                    // User stopped, don't show error
+                    isListening = false;
+                } else {
+                    if (isContinuousMode && isListening) {
+                        setTimeout(() => {
+                            if (isListening) {
+                                recognition.start();
+                            }
+                        }, 300);
+                    } else {
+                        isListening = false;
+                    }
+                }
+                render();
+            };
+
+            recognition.onend = () => {
+                if (isContinuousMode && isListening) {
+                    setTimeout(() => {
+                        if (isListening) {
+                            recognition.start();
+                        }
+                    }, 300);
+                } else {
+                    isListening = false;
+                    render();
+                }
+            };
+        }
+
+        function startRecording(continuous = false) {
+            if (!recognition) {
+                alert('您的浏览器不支持语音识别 / Your browser does not support voice recognition. Please use Chrome or Edge.');
+                return;
+            }
+
+            isContinuousMode = continuous;
+            isListening = true;
+            hasStartedOnce = true;
+            render();
+            
+            try {
+                recognition.start();
+            } catch (err) {
+                console.error('Recognition start error:', err);
+                isListening = false;
+                render();
+            }
+        }
+
+        function stopRecording() {
+            isListening = false;
+            isContinuousMode = false;
+            if (recognition) {
+                recognition.stop();
+            }
+            render();
+        }
+
+        function deleteEntry(id) {
+            if (confirm('确定删除这条记录？ / Delete this entry?')) {
+                entries = entries.filter(e => e.id !== id);
+                saveEntries();
+                render();
+            }
+        }
+
+        function startEdit(index) {
+            editingIndex = index;
+            editingText = entries[index].text;
+            render();
+        }
+
+        function saveEdit() {
+            if (editingIndex >= 0 && editingText.trim()) {
+                entries[editingIndex].text = editingText.trim();
+                saveEntries();
+            }
+            editingIndex = -1;
+            editingText = '';
+            render();
+        }
+
+        function cancelEdit() {
+            editingIndex = -1;
+            editingText = '';
+            render();
+        }
+
+        function exportToText() {
+            const text = entries.map(e => e.text).join('\n');
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `medicine_list_${new Date().toISOString().split('T')[0]}.txt`;
+            link.click();
+        }
+
+        function clearAll() {
+            if (confirm('确定清空所有记录？此操作不可恢复！\n\nClear all entries? This cannot be undone!')) {
+                entries = [];
+                saveEntries();
+                render();
+            }
+        }
+
+        function saveEntries() {
+            localStorage.setItem('voiceEntries', JSON.stringify(entries));
+        }
+
+        function loadEntries() {
+            const saved = localStorage.getItem('voiceEntries');
+            if (saved) {
+                entries = JSON.parse(saved);
+            }
+        }
+
+        function render() {
+            const html = `
+                <div class="bg-white rounded-2xl shadow-xl p-8 mb-6">
+                    <h1 class="text-4xl font-bold text-gray-800 mb-2">🎤 药品信息快速收集器</h1>
+                    <p class="text-gray-600">Medicine Voice Collector - 快速语音录入，批量收集药品信息</p>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-xl p-8 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">收集模式 / Collection Mode</h2>
+                            <p class="text-sm text-gray-500 mt-1">选择单次录入或连续录入模式</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-blue-600">${entries.length}</div>
+                            <div class="text-sm text-gray-500">已收集 / Collected</div>
+                        </div>
+                    </div>
+
+                    ${!isListening ? `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button
+                                onclick="startRecording(false)"
+                                class="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
+                            >
+                                <div class="mb-3">${icons.mic}</div>
+                                <div class="text-xl font-bold mb-1">单次录入 / Single</div>
+                                <div class="text-sm opacity-90">说完自动停止并添加</div>
+                            </button>
+
+                            <button
+                                onclick="startRecording(true)"
+                                class="flex flex-col items-center justify-center p-8 bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
+                            >
+                                <div class="mb-3">${icons.mic}</div>
+                                <div class="text-xl font-bold mb-1">连续录入 / Continuous</div>
+                                <div class="text-sm opacity-90">多次说话，每次自动添加</div>
+                            </button>
+                        </div>
+                        ${hasStartedOnce ? '' : `
+                            <div class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p class="text-sm text-yellow-800">
+                                    ⚠️ <strong>首次使用提示：</strong>第一次点击时，浏览器会请求麦克风权限，请点击"允许"。之后就不会再询问了。
+                                </p>
+                            </div>
+                        `}
+                    ` : `
+                        <div class="text-center">
+                            <div class="inline-block p-8 bg-gradient-to-br from-red-500 to-red-600 rounded-full mb-4 listening-pulse">
+                                <div class="text-white">${icons.mic}</div>
+                            </div>
+                            <div class="text-2xl font-bold text-gray-800 mb-2">
+                                ${isContinuousMode ? '🔴 连续录音中...' : '🎤 正在录音...'}
+                            </div>
+                            <div class="text-gray-600 mb-4">
+                                ${isContinuousMode ? '每说一句会自动添加，点击下方停止' : '说完后自动停止并添加'}
+                            </div>
+                            ${isContinuousMode ? `
+                                <button
+                                    onclick="stopRecording()"
+                                    class="px-8 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+                                >
+                                    停止录音 / Stop Recording
+                                </button>
+                            ` : ''}
+                        </div>
+                    `}
+
+                    ${!isListening && entries.length > 0 ? `
+                        <div class="flex gap-3 mt-6">
+                            <button
+                                onclick="exportToText()"
+                                class="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
+                            >
+                                <span>${icons.download}</span>
+                                导出文本 / Export Text
+                            </button>
+                            <button
+                                onclick="clearAll()"
+                                class="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition font-semibold"
+                            >
+                                清空 / Clear All
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+
+                ${entries.length > 0 ? `
+                    <div class="bg-white rounded-2xl shadow-xl p-8">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">已收集的信息 / Collected Entries</h2>
+                        <div class="space-y-3">
+                            ${entries.map((entry, index) => `
+                                <div class="flex items-center gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition slide-in">
+                                    <div class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                        ${index + 1}
+                                    </div>
+                                    ${editingIndex === index ? `
+                                        <input
+                                            type="text"
+                                            value="${editingText}"
+                                            onchange="editingText = this.value"
+                                            oninput="editingText = this.value"
+                                            class="flex-1 px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            autofocus
+                                        />
+                                        <button
+                                            onclick="saveEdit()"
+                                            class="p-2 text-green-600 hover:bg-green-100 rounded-lg transition"
+                                            title="保存 / Save"
+                                        >
+                                            ${icons.check}
+                                        </button>
+                                        <button
+                                            onclick="cancelEdit()"
+                                            class="p-2 text-gray-600 hover:bg-gray-200 rounded-lg transition"
+                                            title="取消 / Cancel"
+                                        >
+                                            ${icons.x}
+                                        </button>
+                                    ` : `
+                                        <div class="flex-1">
+                                            <div class="text-gray-800 font-medium">${entry.text}</div>
+                                            <div class="text-xs text-gray-400 mt-1">${entry.timestamp}</div>
+                                        </div>
+                                        <button
+                                            onclick="startEdit(${index})"
+                                            class="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition"
+                                            title="编辑 / Edit"
+                                        >
+                                            ${icons.edit}
+                                        </button>
+                                        <button
+                                            onclick="deleteEntry(${entry.id})"
+                                            class="p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
+                                            title="删除 / Delete"
+                                        >
+                                            ${icons.trash}
+                                        </button>
+                                    `}
+                                </div>
+                            `).reverse().join('')}
+                        </div>
+                    </div>
+                ` : !isListening ? `
+                    <div class="bg-white rounded-2xl shadow-xl p-12 text-center">
+                        <div class="text-6xl mb-4">🎤</div>
+                        <p class="text-gray-500 text-lg">还没有收集任何信息</p>
+                        <p class="text-gray-400 mt-2">点击上方按钮开始录入</p>
+                    </div>
+                ` : ''}
+
+                <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-6">
+                    <h3 class="text-lg font-semibold text-blue-900 mb-3">💡 使用提示 / Tips</h3>
+                    <ul class="text-sm text-gray-700 space-y-2">
+                        <li><strong>单次模式：</strong>适合一个个慢慢说，每说完一句会自动添加并停止</li>
+                        <li><strong>连续模式：</strong>适合快速连续录入，每说一句自动添加，继续说下一句，完成后点停止</li>
+                        <li><strong>示例：</strong>"红霉素眼膏有效期2027年6月"、"布洛芬30片"、"维生素C"</li>
+                        <li><strong>导出：</strong>收集完成后导出文本文件，可用AI整理成结构化数据</li>
+                        <li><strong>编辑：</strong>可以随时编辑或删除单条记录</li>
+                    </ul>
+                </div>
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        // Initialize
+        loadEntries();
+        render();
+    </script>
+</body>
+</html>
