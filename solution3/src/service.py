@@ -3,12 +3,15 @@
 处理条目管理、导出等业务逻辑
 """
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, List, Any
 
 from .models import EntryList
 from .storage import JSONStorage
+
+logger = logging.getLogger(__name__)
 
 
 class EntryService:
@@ -17,17 +20,24 @@ class EntryService:
     def __init__(self, storage: JSONStorage):
         self.storage = storage
         self.entry_list = None
+        logger.info("EntryService 初始化")
         self.load()
 
     def load(self) -> None:
         """从存储加载数据"""
         data = self.storage.load()
         self.entry_list = EntryList.from_dict_list(data)
+        logger.info(f"加载数据: {len(data)} 条")
 
     def save(self) -> bool:
         """保存数据到存储"""
         data = self.entry_list.to_dict_list()
-        return self.storage.save(data)
+        result = self.storage.save(data)
+        if result:
+            logger.info(f"保存数据成功: {len(data)} 条")
+        else:
+            logger.error("保存数据失败")
+        return result
 
     def add_entry(self, text: str) -> Tuple[str, List[List[Any]], str, str]:
         """
@@ -40,13 +50,16 @@ class EntryService:
             (状态消息, dataframe数据, 统计信息, 清空的文本框)
         """
         if not text or not text.strip():
+            logger.warning("添加失败: 空内容")
             return "❌ 请输入内容", self.get_dataframe(), self.get_count(), ""
 
         try:
-            self.entry_list.add(text)
+            entry = self.entry_list.add(text)
             self.save()
+            logger.info(f"添加条目: {text[:50]}..." if len(text) > 50 else f"添加条目: {text}")
             return "✅ 已添加", self.get_dataframe(), self.get_count(), ""
         except Exception as e:
+            logger.error(f"添加条目失败: {e}", exc_info=True)
             return f"❌ 添加失败: {e}", self.get_dataframe(), self.get_count(), text
 
     def clear_all(self) -> Tuple[str, List[List[Any]], str]:
@@ -56,8 +69,10 @@ class EntryService:
         Returns:
             (状态消息, dataframe数据, 统计信息)
         """
+        count = self.entry_list.count()
         self.entry_list.clear()
         self.save()
+        logger.warning(f"清空所有数据: {count} 条")
         return "✅ 已清空所有条目", [], self.get_count()
 
     def delete_entry(self, entry_id: int) -> Tuple[str, List[List[Any]], str]:
@@ -227,14 +242,14 @@ class EntryService:
 
             if save_result:
                 timestamp = datetime.now().strftime('%H:%M:%S')
+                logger.info(f"保存表格修改: {len(new_entries)} 条数据")
                 return f"✅ 已保存 {len(new_entries)} 条数据到文件 ({timestamp})", self.get_dataframe(), self.get_count()
             else:
+                logger.error("保存表格修改失败")
                 return "❌ 保存失败", self.get_dataframe(), self.get_count()
 
         except Exception as e:
-            import traceback
-            error_msg = f"❌ 保存失败: {e}\n{traceback.format_exc()}"
-            print(error_msg)  # 打印到日志
+            logger.error(f"保存表格修改失败: {e}", exc_info=True)
             return f"❌ 保存失败: {e}", self.get_dataframe(), self.get_count()
 
     def get_dataframe(self) -> List[List[Any]]:
@@ -253,6 +268,7 @@ class EntryService:
         Returns:
             (dataframe数据, 统计信息)
         """
+        logger.info("刷新数据")
         self.load()
         return self.get_dataframe(), self.get_count()
 
@@ -263,7 +279,8 @@ class EntryService:
         Returns:
             导出的文件路径，如果没有数据则返回None
         """
-        if not self.entry_list:
+        if not self.entry_list or self.entry_list.count() == 0:
+            logger.warning("导出失败: 没有数据")
             return None
 
         filename = f"medicine_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -273,7 +290,8 @@ class EntryService:
             with open(filepath, 'w', encoding='utf-8') as f:
                 for i, entry in enumerate(self.entry_list.get_all(), 1):
                     f.write(f"{i}. {entry.text}\n")
+            logger.info(f"导出成功: {filepath}, {self.entry_list.count()} 条")
             return str(filepath)
         except IOError as e:
-            print(f"❌ 导出失败: {e}")
+            logger.error(f"导出失败: {e}", exc_info=True)
             return None

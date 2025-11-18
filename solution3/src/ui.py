@@ -28,7 +28,7 @@ class GradioUI:
             # 标题和统计
             gr.Markdown("# 🎤 药品信息收集器 V3")
             gr.Markdown("*基于Gradio的语音药品信息收集工具*")
-            count_display = gr.Markdown(self.service.get_count())
+            count_display = gr.Markdown("📊 已收集: **加载中...** 条")
 
             gr.Markdown("---")
 
@@ -79,7 +79,7 @@ class GradioUI:
             """)
 
             dataframe = gr.Dataframe(
-                value=self.service.get_dataframe(),
+                value=[],  # 初始化为空，由 app.load() 统一加载数据
                 headers=["#", "药品信息", "录入时间", "ID"],
                 datatype=["number", "str", "str", "number"],
                 col_count=(4, "fixed"),

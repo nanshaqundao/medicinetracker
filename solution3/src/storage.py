@@ -4,8 +4,11 @@
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class JSONStorage:
@@ -13,6 +16,7 @@ class JSONStorage:
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
+        logger.info(f"JSONStorage 初始化: {file_path}")
 
     def load(self) -> List[Dict[str, Any]]:
         """
@@ -22,14 +26,17 @@ class JSONStorage:
             数据字典列表，如果文件不存在或解析失败则返回空列表
         """
         if not self.file_path.exists():
+            logger.info(f"数据文件不存在: {self.file_path}")
             return []
 
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return data if isinstance(data, list) else []
+                result = data if isinstance(data, list) else []
+                logger.info(f"加载文件成功: {self.file_path}, {len(result)} 条")
+                return result
         except (json.JSONDecodeError, IOError) as e:
-            print(f"⚠️ 加载数据失败: {e}")
+            logger.error(f"加载文件失败: {self.file_path}, 错误: {e}")
             return []
 
     def save(self, data: List[Dict[str, Any]]) -> bool:
@@ -48,13 +55,15 @@ class JSONStorage:
 
             with open(self.file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"保存文件成功: {self.file_path}, {len(data)} 条")
             return True
         except IOError as e:
-            print(f"❌ 保存数据失败: {e}")
+            logger.error(f"保存文件失败: {self.file_path}, 错误: {e}")
             return False
 
     def clear(self) -> bool:
         """清空数据文件"""
+        logger.warning(f"清空文件: {self.file_path}")
         return self.save([])
 
     def exists(self) -> bool:

@@ -3,6 +3,7 @@
 定义应用的配置参数
 """
 
+import logging
 from pathlib import Path
 
 # 项目根目录
@@ -24,3 +25,9 @@ SHOW_ERROR = True
 # 应用信息
 APP_TITLE = "药品信息收集器 V3"
 APP_VERSION = "3.0.0"
+
+# 日志配置
+LOG_FILE = PROJECT_ROOT / "app.log"
+LOG_LEVEL = logging.INFO
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
