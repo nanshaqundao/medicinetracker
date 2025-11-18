@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家庭药品管理系统 / Medicine Inventory Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .listening-pulse {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="max-w-6xl mx-auto p-6 min-h-screen"></div>
+
+    <script>
+        // Lucide icons as SVG strings
+        const icons = {
+            search: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+            plus: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+            download: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
+            alertTriangle: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            calendar: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
+            package: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+            trash: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+            mic: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
+            micOff: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
+            packageSmall: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+            calendarSmall: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>'
+        };
+
+        const categories = [
+            '全部 / All',
+            '止痛退烧药 / Pain & Fever',
+            '感冒药 / Cold & Flu',
+            '消化系统药 / Digestive',
+            '抗过敏药 / Allergy',
+            '皮肤外用药 / Skin & Topical',
+            '急救用品 / First Aid',
+            '处方药 / Prescription',
+            '维生素保健品 / Vitamins',
+            '眼耳用药 / Eye & Ear',
+            '儿童用药 / Children\'s'
+        ];
+
+        const units = [
+            '片 / tablets',
+            '粒 / capsules',
+            '毫升 / ml',
+            '克 / g',
+            '盒 / box',
+            '瓶 / bottle',
+            '支 / tube',
+            '贴 / patch'
+        ];
+
+        let medicines = [];
+        let showForm = false;
+        let searchTerm = '';
+        let filterCategory = '全部 / All';
+        let isListening = false;
+        let recognition = null;
+        let micPermissionGranted = false;
+
+        let formData = {
+            medicineName: '',
+            genericName: '',
+            quantity: '',
+            unit: '片 / tablets',
+            expiryDate: '',
+            category: '止痛退烧药 / Pain & Fever'
+        };
+
+        // Initialize speech recognition
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'zh-CN';
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                parseVoiceInput(transcript);
+                isListening = false;
+                render();
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                isListening = false;
+                
+                if (event.error === 'not-allowed') {
+                    alert('⚠️ 麦克风权限被拒绝！\n\n请按以下步骤操作：\n1. 点击地址栏左边的🔒图标\n2. 找到"麦克风"选项\n3. 改为"允许"\n4. 刷新页面后重试\n\n---\n\nMicrophone permission denied!\n\n1. Click the 🔒 icon in address bar\n2. Find "Microphone" setting\n3. Change to "Allow"\n4. Refresh page and try again');
+                } else if (event.error === 'no-speech') {
+                    alert('没有检测到语音，请重试 / No speech detected, please try again');
+                } else {
+                    alert('语音识别出错: ' + event.error + '\n请重试 / Voice recognition error, please try again');
+                }
+                render();
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                render();
+            };
+        }
+
+        function parseVoiceInput(text) {
+            const updates = {};
+
+            const quantityMatch = text.match(/(\d+)\s*(片|粒|毫升|克|盒|瓶|支|贴|ml|g|tablet|capsule|box|bottle|tube|patch)/i);
+            if (quantityMatch) {
+                updates.quantity = quantityMatch[1];
+                const unitText = quantityMatch[2];
+                const unitMapping = {
+                    '片': '片 / tablets',
+                    'tablet': '片 / tablets',
+                    '粒': '粒 / capsules',
+                    'capsule': '粒 / capsules',
+                    '毫升': '毫升 / ml',
+                    'ml': '毫升 / ml',
+                    '克': '克 / g',
+                    'g': '克 / g',
+                    '盒': '盒 / box',
+                    'box': '盒 / box',
+                    '瓶': '瓶 / bottle',
+                    'bottle': '瓶 / bottle',
+                    '支': '支 / tube',
+                    'tube': '支 / tube',
+                    '贴': '贴 / patch',
+                    'patch': '贴 / patch'
+                };
+                updates.unit = unitMapping[unitText.toLowerCase()] || formData.unit;
+            }
+
+            const dateMatch = text.match(/(\d{4})[年\-\/](\d{1,2})[月\-\/](\d{1,2})/);
+            if (dateMatch) {
+                const year = dateMatch[1];
+                const month = dateMatch[2].padStart(2, '0');
+                const day = dateMatch[3].padStart(2, '0');
+                updates.expiryDate = `${year}-${month}-${day}`;
+            }
+
+            const parts = text.split(/[，。,]/).map(p => p.trim()).filter(p => p);
+            if (parts.length > 0 && !updates.quantity) {
+                updates.medicineName = parts[0];
+            }
+            if (parts.length > 1) {
+                const secondPart = parts[1];
+                if (!secondPart.match(/\d/) && secondPart.length > 1) {
+                    updates.genericName = secondPart;
+                }
+            }
+
+            formData = {...formData, ...updates};
+        }
+
+        async function toggleVoiceInput() {
+            if (!recognition) {
+                alert('您的浏览器不支持语音识别 / Your browser does not support voice recognition. Please use Chrome or Edge.');
+                return;
+            }
+
+            if (isListening) {
+                recognition.stop();
+                isListening = false;
+                render();
+            } else {
+                // Only request permission the first time
+                if (!micPermissionGranted) {
+                    try {
+                        await navigator.mediaDevices.getUserMedia({ audio: true });
+                        micPermissionGranted = true;
+                    } catch (err) {
+                        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                            alert('⚠️ 麦克风权限被拒绝！\n\n请按以下步骤操作：\n1. 点击地址栏左边的🔒图标\n2. 找到"麦克风"选项\n3. 改为"允许"\n4. 刷新页面后重试\n\n---\n\nMicrophone permission denied!\n\n1. Click the 🔒 icon in address bar\n2. Find "Microphone" setting\n3. Change to "Allow"\n4. Refresh page and try again');
+                        } else {
+                            alert('无法访问麦克风，请检查设备设置 / Cannot access microphone, please check device settings\n\n错误: ' + err.message);
+                        }
+                        return;
+                    }
+                }
+                
+                // Start recognition
+                isListening = true;
+                render();
+                recognition.start();
+            }
+        }
+
+        function loadMedicines() {
+            const saved = localStorage.getItem('medicines');
+            if (saved) {
+                medicines = JSON.parse(saved);
+            }
+        }
+
+        function saveMedicines() {
+            localStorage.setItem('medicines', JSON.stringify(medicines));
+        }
+
+        function handleSubmit(e) {
+            e.preventDefault();
+            const newMedicine = {
+                id: Date.now(),
+                ...formData,
+                dateAdded: new Date().toISOString().split('T')[0]
+            };
+            medicines.push(newMedicine);
+            saveMedicines();
+            formData = {
+                medicineName: '',
+                genericName: '',
+                quantity: '',
+                unit: '片 / tablets',
+                expiryDate: '',
+                category: '止痛退烧药 / Pain & Fever'
+            };
+            showForm = false;
+            render();
+        }
+
+        function deleteMedicine(id) {
+            if (confirm('确定删除此药品？ / Delete this medicine?')) {
+                medicines = medicines.filter(m => m.id !== id);
+                saveMedicines();
+                render();
+            }
+        }
+
+        function exportToCSV() {
+            const headers = ['ID,药品名称/Medicine Name,通用名/Generic Name,数量/Quantity,单位/Unit,有效期/Expiry Date,类别/Category,添加日期/Date Added'];
+            const rows = medicines.map(m => 
+                `${m.id},"${m.medicineName}","${m.genericName}",${m.quantity},"${m.unit}",${m.expiryDate},"${m.category}",${m.dateAdded}`
+            );
+            const csv = [...headers, ...rows].join('\n');
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `medicines_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        function getExpiryStatus(expiryDate) {
+            const today = new Date();
+            const expiry = new Date(expiryDate);
+            const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+            
+            if (daysUntilExpiry < 0) return { status: 'expired', color: 'bg-red-100 border-red-300', days: daysUntilExpiry };
+            if (daysUntilExpiry <= 30) return { status: 'expiring-soon', color: 'bg-orange-100 border-orange-300', days: daysUntilExpiry };
+            if (daysUntilExpiry <= 90) return { status: 'warning', color: 'bg-yellow-100 border-yellow-300', days: daysUntilExpiry };
+            return { status: 'good', color: 'bg-green-50 border-green-200', days: daysUntilExpiry };
+        }
+
+        function getFilteredMedicines() {
+            return medicines.filter(m => {
+                const matchesSearch = m.medicineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                     m.genericName.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesCategory = filterCategory === '全部 / All' || m.category === filterCategory;
+                return matchesSearch && matchesCategory;
+            });
+        }
+
+        function getStats() {
+            return {
+                total: medicines.length,
+                expired: medicines.filter(m => getExpiryStatus(m.expiryDate).status === 'expired').length,
+                expiringSoon: medicines.filter(m => getExpiryStatus(m.expiryDate).status === 'expiring-soon').length
+            };
+        }
+
+        function render() {
+            const stats = getStats();
+            const filteredMedicines = getFilteredMedicines();
+
+            const html = `
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">家庭药品管理系统</h1>
+                    <p class="text-gray-600">Medicine Inventory Tracker</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">总计 / Total</p>
+                                <p class="text-2xl font-bold text-blue-700">${stats.total}</p>
+                            </div>
+                            <div class="text-blue-500">${icons.package}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">即将过期 / Expiring Soon</p>
+                                <p class="text-2xl font-bold text-orange-700">${stats.expiringSoon}</p>
+                            </div>
+                            <div class="text-orange-500">${icons.alertTriangle}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">已过期 / Expired</p>
+                                <p class="text-2xl font-bold text-red-700">${stats.expired}</p>
+                            </div>
+                            <div class="text-red-500">${icons.calendar}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div class="flex flex-col md:flex-row gap-4 mb-4">
+                        <div class="flex-1 relative">
+                            <div class="absolute left-3 top-3 text-gray-400">${icons.search}</div>
+                            <input
+                                type="text"
+                                placeholder="搜索药品 / Search medicines..."
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                value="${searchTerm}"
+                                onkeyup="searchTerm = this.value; render();"
+                            />
+                        </div>
+                        
+                        <select
+                            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            onchange="filterCategory = this.value; render();"
+                        >
+                            ${categories.map(cat => `<option value="${cat}" ${cat === filterCategory ? 'selected' : ''}>${cat}</option>`).join('')}
+                        </select>
+                        
+                        <button
+                            onclick="showForm = !showForm; render();"
+                            class="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        >
+                            <span>${icons.plus}</span>
+                            添加 / Add
+                        </button>
+                        
+                        <button
+                            onclick="exportToCSV()"
+                            class="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition ${medicines.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}"
+                            ${medicines.length === 0 ? 'disabled' : ''}
+                        >
+                            <span>${icons.download}</span>
+                            导出 / Export CSV
+                        </button>
+                    </div>
+
+                    ${showForm ? `
+                        <form onsubmit="handleSubmit(event)" class="bg-gray-50 p-6 rounded-lg border border-gray-200 mb-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-semibold">添加新药品 / Add New Medicine</h3>
+                                <button
+                                    type="button"
+                                    onclick="toggleVoiceInput()"
+                                    class="flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                                        isListening 
+                                            ? 'bg-red-600 text-white hover:bg-red-700 listening-pulse' 
+                                            : 'bg-purple-600 text-white hover:bg-purple-700'
+                                    }"
+                                >
+                                    <span>${isListening ? icons.micOff : icons.mic}</span>
+                                    ${isListening ? '停止录音 / Stop' : '语音输入 / Voice'}
+                                </button>
+                            </div>
+
+                            ${isListening ? `
+                                <div class="mb-4 p-3 bg-purple-100 border border-purple-300 rounded-lg">
+                                    <p class="text-purple-800 text-sm">
+                                        🎤 正在聆听... / Listening... 
+                                        <br />
+                                        <span class="text-xs">
+                                            示例: "泰诺，对乙酰氨基酚，20片，2025年12月31日"
+                                        </span>
+                                    </p>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        药品名称 / Medicine Name *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        value="${formData.medicineName}"
+                                        onchange="formData.medicineName = this.value"
+                                        placeholder="例如: 泰诺 / Tylenol"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        通用名 / Generic Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        value="${formData.genericName}"
+                                        onchange="formData.genericName = this.value"
+                                        placeholder="例如: 对乙酰氨基酚 / Paracetamol"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        数量 / Quantity *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        required
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        value="${formData.quantity}"
+                                        onchange="formData.quantity = this.value"
+                                        placeholder="例如: 20"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        单位 / Unit
+                                    </label>
+                                    <select
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        onchange="formData.unit = this.value"
+                                    >
+                                        ${units.map(unit => `<option value="${unit}" ${unit === formData.unit ? 'selected' : ''}>${unit}</option>`).join('')}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        有效期 / Expiry Date *
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        value="${formData.expiryDate}"
+                                        onchange="formData.expiryDate = this.value"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        类别 / Category
+                                    </label>
+                                    <select
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        onchange="formData.category = this.value"
+                                    >
+                                        ${categories.slice(1).map(cat => `<option value="${cat}" ${cat === formData.category ? 'selected' : ''}>${cat}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="flex gap-4 mt-6">
+                                <button
+                                    type="submit"
+                                    class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                >
+                                    保存 / Save
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="showForm = false; render();"
+                                    class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition"
+                                >
+                                    取消 / Cancel
+                                </button>
+                            </div>
+                        </form>
+                    ` : ''}
+                </div>
+
+                <div class="space-y-4">
+                    ${filteredMedicines.length === 0 ? `
+                        <div class="bg-white rounded-lg shadow-md p-12 text-center">
+                            <div class="text-gray-400 mb-4 flex justify-center">${icons.package}</div>
+                            <p class="text-gray-500 text-lg">暂无药品记录 / No medicines recorded</p>
+                            <p class="text-gray-400 mt-2">点击"添加"按钮开始录入 / Click "Add" to start</p>
+                        </div>
+                    ` : filteredMedicines.map(medicine => {
+                        const expiryInfo = getExpiryStatus(medicine.expiryDate);
+                        return `
+                            <div class="${expiryInfo.color} border-2 rounded-lg p-6 transition-all hover:shadow-lg">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <div class="flex items-start gap-4">
+                                            <div class="flex-1">
+                                                <h3 class="text-xl font-bold text-gray-800">${medicine.medicineName}</h3>
+                                                ${medicine.genericName ? `<p class="text-gray-600 mt-1">${medicine.genericName}</p>` : ''}
+                                                <div class="flex flex-wrap gap-4 mt-3 text-sm">
+                                                    <span class="flex items-center gap-1">
+                                                        <span class="text-gray-500">${icons.packageSmall}</span>
+                                                        <strong>数量 / Qty:</strong> ${medicine.quantity} ${medicine.unit}
+                                                    </span>
+                                                    <span class="flex items-center gap-1">
+                                                        <span class="text-gray-500">${icons.calendarSmall}</span>
+                                                        <strong>有效期 / Expiry:</strong> ${medicine.expiryDate}
+                                                        ${expiryInfo.status === 'expired' ? '<span class="ml-2 text-red-700 font-semibold">已过期 / EXPIRED</span>' : ''}
+                                                        ${expiryInfo.status === 'expiring-soon' ? `<span class="ml-2 text-orange-700 font-semibold">${expiryInfo.days}天后过期 / ${expiryInfo.days} days left</span>` : ''}
+                                                    </span>
+                                                </div>
+                                                <p class="mt-2 text-sm text-gray-600">
+                                                    <strong>类别 / Category:</strong> ${medicine.category}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        onclick="deleteMedicine(${medicine.id})"
+                                        class="ml-4 p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
+                                        title="删除 / Delete"
+                                    >
+                                        ${icons.trash}
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold text-blue-900 mb-3">
+                        💡 分类存储建议 / Storage Tips
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+                        <div><strong>盒子1 / Box 1:</strong> 止痛退烧药、感冒药 (常用药)</div>
+                        <div><strong>盒子2 / Box 2:</strong> 消化系统药、抗过敏药</div>
+                        <div><strong>盒子3 / Box 3:</strong> 皮肤外用药、急救用品</div>
+                        <div><strong>盒子4 / Box 4:</strong> 处方药（单独存放）</div>
+                        <div><strong>盒子5 / Box 5:</strong> 维生素保健品</div>
+                        <div><strong>盒子6 / Box 6:</strong> 眼耳用药、儿童用药</div>
+                    </div>
+                    <p class="mt-3 text-xs text-gray-600">
+                        提示：处方药应单独存放并远离儿童，外用药与内服药分开存储
+                    </p>
+                </div>
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        // Initialize
+        loadMedicines();
+        render();
+    </script>
+</body>
+</html>
