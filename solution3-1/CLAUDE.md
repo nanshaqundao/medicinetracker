@@ -16,6 +16,10 @@ This is **solution3-1**, an enhanced version of solution3 that adds:
 ### Running the Application
 
 ```bash
+# Setup environment (first time only)
+cp .env.example .env
+# Edit .env and add your CLAUDE_API_KEY
+
 # Install dependencies
 pip install -r requirements.txt
 
@@ -128,9 +132,11 @@ Defines two parallel data model hierarchies:
 LLM integration layer supporting multiple providers (Claude, OpenAI, Ollama).
 
 **Current Implementation:** ClaudeClient with Anthropic API
-- Model: `claude-3-5-sonnet-20241022`
+- Model: `claude-3-opus-20240229` (configured for user's API key access)
 - Temperature: `0.3` (for consistent parsing)
 - Max tokens: `1024`
+
+**Important:** The model name depends on what the API key has access to. If you get 404 errors, the API key doesn't support the configured model. Test with this script to find available models.
 
 **Key Method:** `parse_medicine_text(text: str) -> Dict[str, Any]`
 - Takes raw Chinese text like "阿莫西林一盒2027年6月"
@@ -215,12 +221,14 @@ STRUCTURED_DATA_FILE = "data/structured_medicines.json"  # Parsed data
 SERVER_PORT = 7860
 SERVER_NAME = "0.0.0.0"
 
-# LLM Settings
+# LLM Settings (loaded from .env file via python-dotenv)
 LLM_PROVIDER = "claude"
-CLAUDE_API_KEY = "sk-ant-api03-..."  # User's API key
-CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")  # From .env file
+CLAUDE_MODEL = "claude-3-opus-20240229"
 CLAUDE_TEMPERATURE = 0.3
 ```
+
+**Environment Variables:** API keys are loaded from `.env` file (copy from `.env.example` and fill in). The `.env` file is excluded from git for security.
 
 **Logging:** Configured in `app.py`'s `setup_logging()`, outputs to both `app.log` and console.
 
@@ -305,9 +313,38 @@ app.load(fn=self.service.refresh, outputs=[dataframe, count_display])
 
 ### LLM API Failures
 
-**Problem:** Claude API calls fail or return invalid JSON.
+**Problem:** Claude API calls fail with 404 errors like `'model: claude-3-5-sonnet-20240620'`
 
-**Solution:** The `ClaudeClient` has fallback parsing in `_fallback_parse()`. Check logs for API errors. Verify API key in config.py.
+**Cause:** The API key doesn't have access to the specified model.
+
+**Solution:**
+1. Check `app.log` for the exact error
+2. The `ClaudeClient` has fallback parsing in `_fallback_parse()` which will extract basic drug name
+3. Verify API key in `.env` file
+4. Test which models your API key supports (see llm_client.py documentation)
+5. Update `CLAUDE_MODEL` in config.py to a supported model (e.g., `claude-3-opus-20240229`)
+
+**Known working models:**
+- `claude-3-opus-20240229` (works with most API keys, deprecated 2026-01-05)
+- `claude-3-sonnet-20240229`
+- `claude-3-haiku-20240307`
+
+### Clearing Old Structured Data
+
+**Problem:** Tab 2 shows old/incorrect parsing results from previous failed LLM calls.
+
+**Cause:** `structured_medicines.json` contains data from when the LLM was using fallback parsing.
+
+**Solution:**
+```bash
+# Delete the structured data file
+rm data/structured_medicines.json
+
+# Restart the app
+# Re-run parsing in Tab 2 with correct model
+```
+
+This forces fresh parsing with the correct LLM model.
 
 ## Project Structure
 
