@@ -45,6 +45,10 @@ def main():
     logger.info(f"服务器地址: {config.SERVER_NAME}:{config.SERVER_PORT}")
     logger.info(f"数据目录: {config.DATA_DIR}")
 
+    # 清理过期数据
+    from src.storage import cleanup_old_files
+    cleanup_old_files(config.DATA_DIR, days=30)
+
     # 初始化服务层
     logger.info("初始化服务层...")
     service = EntryService(config.DATA_DIR)
