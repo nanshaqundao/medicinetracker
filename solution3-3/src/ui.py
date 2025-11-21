@@ -71,7 +71,8 @@ class GradioUI:
                         value="default",
                         placeholder="输入用户名...",
                         scale=1,
-                        visible=False  # 隐藏输入框，由JS自动控制
+                        visible=True,  # 必须为True，否则JS无法找到DOM元素
+                        elem_classes=["hidden-user-input"]  # 通过CSS隐藏
                     )
                     self.user_status = gr.Markdown("✅ 当前用户: default")
 
@@ -524,6 +525,9 @@ class GradioUI:
             font-size: 18px !important;
             padding: 20px !important;
             font-weight: bold !important;
+        }
+        .hidden-user-input {
+            display: none !important;
         }
         """
 
