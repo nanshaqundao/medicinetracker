@@ -231,22 +231,17 @@ class GradioUI:
 
     def _bind_user_events_callback(self, user_id):
         """切换用户并刷新所有数据的回调函数"""
-        # 切换EntryService用户
-        msg1 = self.entry_service.switch_user(user_id)
-        # 切换ParserService用户
-        self.parser_service.switch_user(user_id)
-        
         # 刷新Tab1数据
-        df1, count1 = self.entry_service.refresh()
+        df1, count1 = self.entry_service.refresh(user_id)
         
         # 刷新Tab2数据 (清空显示)
         df2_source = []
-        df2_result = self.parser_service.get_structured_dataframe()
+        df2_result = self.parser_service.get_structured_dataframe(user_id)
         
         # 刷新Tab3数据
-        self.parser_service.load_structured_data()
-        df3 = self.parser_service.get_structured_dataframe()
-        stats = self.parser_service.get_statistics()
+        self.parser_service.load_structured_data(user_id)
+        df3 = self.parser_service.get_structured_dataframe(user_id)
+        stats = self.parser_service.get_statistics(user_id)
         stats_text = f"""### 📊 统计信息
 
 - **总计**: {stats['total']} 条
@@ -317,54 +312,55 @@ class GradioUI:
         # 添加按钮
         self.add_btn.click(
             fn=self.entry_service.add_entry,
-            inputs=[self.text_input],
+            inputs=[self.text_input, self.user_input],
             outputs=[self.status, self.dataframe, self.count_display, self.text_input]
         )
 
         # 保存表格
         self.save_table_btn.click(
             fn=self.entry_service.save_dataframe,
-            inputs=[self.dataframe],
+            inputs=[self.dataframe, self.user_input],
             outputs=[self.table_status, self.dataframe, self.count_display]
         )
 
         # 刷新
         self.refresh_btn.click(
             fn=self.entry_service.refresh,
+            inputs=[self.user_input],
             outputs=[self.dataframe, self.count_display]
         )
 
         # 导出
         self.export_btn.click(
             fn=self.entry_service.export_to_text,
+            inputs=[self.user_input],
             outputs=[self.file_output]
         )
 
         # 清空
         self.clear_btn.click(
             fn=self.entry_service.clear_all,
+            inputs=[self.user_input],
             outputs=[self.table_status, self.dataframe, self.count_display]
         )
 
         # 回车提交
         self.text_input.submit(
             fn=self.entry_service.add_entry,
-            inputs=[self.text_input],
+            inputs=[self.text_input, self.user_input],
             outputs=[self.status, self.dataframe, self.count_display, self.text_input]
         )
 
-        # 页面加载时刷新
-        self.app.load(
-            fn=self.entry_service.refresh,
-            outputs=[self.dataframe, self.count_display]
-        )
+        # 页面加载时刷新 - 实际上由_bind_user_events_callback处理
+        # self.app.load(...) 
 
     def _bind_tab2_events(self):
         """绑定Tab2事件"""
 
-        def load_raw_data():
+        def load_raw_data(user_id):
             """加载原始数据"""
-            entries = self.entry_service.entry_list.get_all()
+            entry_list = self.entry_service._get_entry_list(user_id)
+            entries = entry_list.get_all()
             if not entries:
                 return [], "⚠️ 没有原始数据"
 
@@ -372,24 +368,26 @@ class GradioUI:
             df_data = [[i+1, e.text, e.timestamp] for i, e in enumerate(entries)]
             return df_data, f"✅ 已加载 {len(entries)} 条原始数据"
 
-        def parse_all():
+        def parse_all(user_id):
             """解析所有原始数据"""
-            entries = self.entry_service.entry_list.get_all()
+            entry_list = self.entry_service._get_entry_list(user_id)
+            entries = entry_list.get_all()
             if not entries:
-                return [], "⚠️ 没有数据需要解析", self.parser_service.get_structured_dataframe()
+                return [], "⚠️ 没有数据需要解析", self.parser_service.get_structured_dataframe(user_id)
 
-            success, failed, failed_texts = self.parser_service.parse_and_save(entries)
+            success, failed, failed_texts = self.parser_service.parse_and_save(entries, user_id)
 
             status_msg = f"✅ 解析完成！\n成功: {success} 条\n失败: {failed} 条"
             if failed_texts:
                 status_msg += f"\n\n失败的文本:\n" + "\n".join(f"- {t}" for t in failed_texts[:5])
 
-            return [], status_msg, self.parser_service.get_structured_dataframe()
+            return [], status_msg, self.parser_service.get_structured_dataframe(user_id)
 
-        def save_structured():
+        def save_structured(user_id):
             """保存结构化数据"""
-            if self.parser_service.save_structured_data():
-                count = self.parser_service.structured_list.count()
+            if self.parser_service.save_structured_data(user_id):
+                structured_list = self.parser_service._get_structured_list(user_id)
+                count = structured_list.count()
                 return f"✅ 已保存 {count} 条结构化数据"
             else:
                 return "❌ 保存失败"
@@ -397,27 +395,30 @@ class GradioUI:
         # 绑定事件
         self.tab2_load_btn.click(
             fn=load_raw_data,
+            inputs=[self.user_input],
             outputs=[self.tab2_source_df, self.tab2_status]
         )
 
         self.tab2_parse_btn.click(
             fn=parse_all,
+            inputs=[self.user_input],
             outputs=[self.tab2_source_df, self.tab2_status, self.tab2_result_df]
         )
 
         self.tab2_save_btn.click(
             fn=save_structured,
+            inputs=[self.user_input],
             outputs=[self.tab2_result_status]
         )
 
     def _bind_tab3_events(self):
         """绑定Tab3事件"""
 
-        def refresh_data():
+        def refresh_data(user_id):
             """刷新数据和统计"""
-            self.parser_service.load_structured_data()
-            df = self.parser_service.get_structured_dataframe()
-            stats = self.parser_service.get_statistics()
+            self.parser_service.load_structured_data(user_id)
+            df = self.parser_service.get_structured_dataframe(user_id)
+            stats = self.parser_service.get_statistics(user_id)
 
             stats_text = f"""### 📊 统计信息
 
@@ -429,43 +430,45 @@ class GradioUI:
 """
             return df, stats_text
 
-        def filter_data(drug_name):
+        def filter_data(drug_name, user_id):
             """筛选数据"""
             if not drug_name or not drug_name.strip():
-                return self.parser_service.get_structured_dataframe()
-            return self.parser_service.filter_by_drug_name(drug_name.strip())
+                return self.parser_service.get_structured_dataframe(user_id)
+            return self.parser_service.filter_by_drug_name(drug_name.strip(), user_id)
 
-        def sort_data(sort_by, sort_order):
+        def sort_data(sort_by, sort_order, user_id):
             """排序数据"""
             reverse = (sort_order == "降序")
 
             if sort_by == "药名":
-                return self.parser_service.sort_by_drug_name(reverse=reverse)
+                return self.parser_service.sort_by_drug_name(user_id, reverse=reverse)
             elif sort_by == "有效期":
-                return self.parser_service.sort_by_expiry(reverse=reverse)
+                return self.parser_service.sort_by_expiry(user_id, reverse=reverse)
             else:
-                return self.parser_service.get_structured_dataframe()
+                return self.parser_service.get_structured_dataframe(user_id)
 
         # 绑定事件
         self.tab3_refresh_btn.click(
             fn=refresh_data,
+            inputs=[self.user_input],
             outputs=[self.tab3_data_df, self.tab3_stats]
         )
 
         self.tab3_filter_btn.click(
             fn=filter_data,
-            inputs=[self.tab3_drug_filter],
+            inputs=[self.tab3_drug_filter, self.user_input],
             outputs=[self.tab3_data_df]
         )
 
         self.tab3_reset_btn.click(
-            fn=lambda: self.parser_service.get_structured_dataframe(),
+            fn=lambda user_id: self.parser_service.get_structured_dataframe(user_id),
+            inputs=[self.user_input],
             outputs=[self.tab3_data_df]
         )
 
         self.tab3_sort_btn.click(
             fn=sort_data,
-            inputs=[self.tab3_sort_by, self.tab3_sort_order],
+            inputs=[self.tab3_sort_by, self.tab3_sort_order, self.user_input],
             outputs=[self.tab3_data_df]
         )
 

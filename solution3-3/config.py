@@ -47,6 +47,14 @@ CLAUDE_MODEL = "claude-3-opus-20240229"  # Claude 3 Opus
 CLAUDE_MAX_TOKENS = 1024
 CLAUDE_TEMPERATURE = 0.3  # 较低的温度以获得更稳定的结果
 
+# Debug logging for API Key
+if CLAUDE_API_KEY:
+    masked_key = CLAUDE_API_KEY[:10] + "..." + CLAUDE_API_KEY[-5:]
+    print(f"✅ CLAUDE_API_KEY loaded: {masked_key}")
+else:
+    print("❌ CLAUDE_API_KEY is MISSING or EMPTY")
+
+
 # OpenAI配置（备用）
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # 请设置环境变量或直接填入
 OPENAI_MODEL = "gpt-4"

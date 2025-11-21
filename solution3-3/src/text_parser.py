@@ -5,7 +5,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from .models import Entry, EntryList, StructuredMedicine, StructuredMedicineList
 from .storage import JSONStorage
 from .llm_client import create_llm_client
@@ -26,7 +26,8 @@ class MedicineParserService:
             llm_client: LLM客户端（如果为None，则自动创建）
         """
         self.data_dir = data_dir
-        self.current_user = "default"
+        # 内存缓存：user_id -> StructuredMedicineList
+        self.sessions: Dict[str, StructuredMedicineList] = {}
         
         # 初始化LLM客户端
         if llm_client is None:
@@ -40,42 +41,46 @@ class MedicineParserService:
         else:
             self.llm_client = llm_client
 
-        # 初始化存储
-        self.switch_user(self.current_user)
-
-    def switch_user(self, user_id: str) -> None:
-        """切换当前用户"""
-        if not user_id or not user_id.strip():
-            return
-            
-        self.current_user = user_id.strip()
-        file_path = self.data_dir / f"structured_medicines_{self.current_user}.json"
-        self.structured_storage = JSONStorage(file_path)
-        
-        # 加载已有的结构化数据
-        self.structured_list = StructuredMedicineList()
-        self.load_structured_data()
-        logger.info(f"解析服务切换用户: {self.current_user}, 文件: {file_path}")
-
-
-
         logger.info("MedicineParserService 初始化完成")
 
-    def load_structured_data(self) -> None:
-        """从存储加载结构化数据"""
-        data = self.structured_storage.load()
-        if data:
-            self.structured_list = StructuredMedicineList.from_dict_list(data)
-            logger.info(f"加载结构化数据: {len(data)} 条")
-        else:
-            logger.info("无已有结构化数据")
+    def _get_storage(self, user_id: str) -> JSONStorage:
+        """获取指定用户的存储对象"""
+        user_id = user_id.strip() if user_id else "default"
+        file_path = self.data_dir / f"structured_medicines_{user_id}.json"
+        return JSONStorage(file_path)
 
-    def save_structured_data(self) -> bool:
+    def _get_structured_list(self, user_id: str) -> StructuredMedicineList:
+        """获取指定用户的结构化数据列表（带缓存）"""
+        user_id = user_id.strip() if user_id else "default"
+        
+        # 如果缓存中没有，则加载
+        if user_id not in self.sessions:
+            storage = self._get_storage(user_id)
+            data = storage.load()
+            if data:
+                self.sessions[user_id] = StructuredMedicineList.from_dict_list(data)
+                logger.info(f"加载用户结构化数据: {user_id}, {len(data)} 条")
+            else:
+                self.sessions[user_id] = StructuredMedicineList()
+                logger.info(f"初始化用户结构化数据: {user_id}")
+            
+        return self.sessions[user_id]
+
+    def load_structured_data(self, user_id: str) -> None:
+        """从存储加载结构化数据（强制刷新）"""
+        if user_id in self.sessions:
+            del self.sessions[user_id]
+        self._get_structured_list(user_id)
+
+    def save_structured_data(self, user_id: str) -> bool:
         """保存结构化数据到存储"""
-        data = self.structured_list.to_dict_list()
-        result = self.structured_storage.save(data)
+        structured_list = self._get_structured_list(user_id)
+        storage = self._get_storage(user_id)
+        
+        data = structured_list.to_dict_list()
+        result = storage.save(data)
         if result:
-            logger.info(f"保存结构化数据成功: {len(data)} 条")
+            logger.info(f"保存结构化数据成功: {user_id}, {len(data)} 条")
         return result
 
     def parse_single_text(self, text: str) -> StructuredMedicine:
@@ -139,57 +144,65 @@ class MedicineParserService:
         logger.info(f"批量解析完成: 成功 {len(success_list)}, 失败 {len(failed_list)}")
         return success_list, failed_list
 
-    def parse_and_save(self, entries: List[Entry]) -> Tuple[int, int, List[str]]:
+    def parse_and_save(self, entries: List[Entry], user_id: str) -> Tuple[int, int, List[str]]:
         """
         解析并保存
 
         Args:
             entries: Entry对象列表
+            user_id: 用户ID
 
         Returns:
             (成功数量, 失败数量, 失败文本列表)
         """
         success_list, failed_list = self.parse_batch(entries)
+        structured_list = self._get_structured_list(user_id)
 
         # 添加到列表
         for medicine in success_list:
             try:
-                self.structured_list.add(medicine)
+                structured_list.add(medicine)
             except ValueError as e:
                 logger.error(f"添加失败: {e}")
                 failed_list.append(medicine.original_text)
 
         # 保存
-        self.save_structured_data()
+        self.save_structured_data(user_id)
 
         return len(success_list), len(failed_list), failed_list
 
-    def get_all_structured(self) -> List[StructuredMedicine]:
+    def get_all_structured(self, user_id: str) -> List[StructuredMedicine]:
         """获取所有结构化数据"""
-        return self.structured_list.get_all()
+        structured_list = self._get_structured_list(user_id)
+        return structured_list.get_all()
 
-    def get_structured_dataframe(self) -> List[List]:
+    def get_structured_dataframe(self, user_id: str) -> List[List]:
         """获取结构化数据的Dataframe格式"""
-        return self.structured_list.to_dataframe()
+        structured_list = self._get_structured_list(user_id)
+        return structured_list.to_dataframe()
 
-    def filter_by_drug_name(self, drug_name: str) -> List[List]:
+    def filter_by_drug_name(self, drug_name: str, user_id: str) -> List[List]:
         """按药名筛选并返回Dataframe格式"""
-        filtered = self.structured_list.filter_by_drug_name(drug_name)
+        structured_list = self._get_structured_list(user_id)
+        filtered = structured_list.filter_by_drug_name(drug_name)
         return self._medicines_to_dataframe(filtered)
 
-    def filter_by_expiry(self, before_date: str = None, after_date: str = None) -> List[List]:
+    def filter_by_expiry(self, user_id: str, before_date: str = None, after_date: str = None) -> List[List]:
         """按有效期筛选并返回Dataframe格式"""
-        filtered = self.structured_list.filter_by_expiry(before_date, after_date)
+        structured_list = self._get_structured_list(user_id)
+        filtered = structured_list.filter_by_expiry(before_date, after_date)
         return self._medicines_to_dataframe(filtered)
 
-    def sort_by_drug_name(self, reverse: bool = False) -> List[List]:
+    def sort_by_drug_name(self, user_id: str, reverse: bool = False) -> List[List]:
         """按药名排序并返回Dataframe格式"""
-        sorted_list = self.structured_list.sort_by_drug_name(reverse)
+        structured_list = self._get_structured_list(user_id)
+        sorted_list = structured_list.sort_by_drug_name(reverse)
         return self._medicines_to_dataframe(sorted_list)
 
-    def sort_by_expiry(self, reverse: bool = False) -> List[List]:
+    def sort_by_expiry(self, user_id: str, reverse: bool = False) -> List[List]:
         """按有效期排序并返回Dataframe格式"""
-        sorted_list = self.structured_list.sort_by_expiry(reverse)
+        structured_list = self._get_structured_list(user_id)
+        sorted_list = structured_list.sort_by_expiry(reverse)
         return self._medicines_to_dataframe(sorted_list)
 
     def _medicines_to_dataframe(self, medicines: List[StructuredMedicine]) -> List[List]:
@@ -199,12 +212,13 @@ class MedicineParserService:
             for i, medicine in enumerate(medicines)
         ]
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self, user_id: str) -> dict:
         """获取统计信息"""
-        total = self.structured_list.count()
+        structured_list = self._get_structured_list(user_id)
+        total = structured_list.count()
 
         # 统计各字段的填充率
-        all_medicines = self.structured_list.get_all()
+        all_medicines = structured_list.get_all()
 
         stats = {
             'total': total,
@@ -216,8 +230,9 @@ class MedicineParserService:
 
         return stats
 
-    def clear_all(self) -> None:
+    def clear_all(self, user_id: str) -> None:
         """清空所有结构化数据"""
-        self.structured_list.clear()
-        self.save_structured_data()
-        logger.warning("已清空所有结构化数据")
+        structured_list = self._get_structured_list(user_id)
+        structured_list.clear()
+        self.save_structured_data(user_id)
+        logger.warning(f"用户 {user_id} 已清空所有结构化数据")
