@@ -45,6 +45,22 @@ python app.py
 
 就是这么简单！🎉
 
+### 🐳 Docker 启动
+
+如果您更喜欢使用 Docker：
+
+```bash
+# 1. 构建镜像
+docker build -t medicinetracker .
+
+# 2. 运行容器（传递 Windows 环境变量）
+# PowerShell:
+docker run -p 7860:7860 -v ${PWD}/data:/app/data -e CLAUDE_API_KEY=$env:CLAUDE_API_KEY medicinetracker
+
+# CMD:
+# docker run -p 7860:7860 -v %cd%/data:/app/data -e CLAUDE_API_KEY=%CLAUDE_API_KEY% medicinetracker
+```
+
 ---
 
 ## 📖 使用指南
