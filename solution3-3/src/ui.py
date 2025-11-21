@@ -23,38 +23,7 @@ class GradioUI:
         with gr.Blocks(
             title="药品信息管理系统 V3.1",
             theme=gr.themes.Soft(),
-            head=VOICE_RECOGNITION_JS + """
-            <script>
-            function getUserId() {
-                let userId = localStorage.getItem('medicine_tracker_user_id');
-                if (!userId) {
-                    userId = 'user_' + Math.random().toString(36).substr(2, 9);
-                    localStorage.setItem('medicine_tracker_user_id', userId);
-                }
-                return userId;
-            }
-            
-            // 页面加载完成后自动设置用户ID
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(function() {
-                    const userId = getUserId();
-                    console.log('Implicit User ID:', userId);
-                    
-                    // 找到用户ID输入框并设置值
-                    const inputs = document.querySelectorAll('input');
-                    for (let input of inputs) {
-                        if (input.placeholder && input.placeholder.includes('输入用户名')) {
-                            input.value = userId;
-                            input.dispatchEvent(new Event('input', { bubbles: true }));
-                            // 触发回车事件
-                            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                            break;
-                        }
-                    }
-                }, 1000); // 延迟1秒确保Gradio组件已加载
-            });
-            </script>
-            """,
+            head=VOICE_RECOGNITION_JS,
             css=self._get_custom_css()
         ) as app:
 
@@ -260,28 +229,25 @@ class GradioUI:
             self.tab3_refresh_btn = gr.Button("🔄 刷新数据", variant="primary", size="lg")
             self.tab3_export_btn = gr.Button("📥 导出当前视图", variant="secondary")
 
-    def _bind_user_events(self):
-        """绑定用户切换事件"""
+    def _bind_user_events_callback(self, user_id):
+        """切换用户并刷新所有数据的回调函数"""
+        # 切换EntryService用户
+        msg1 = self.entry_service.switch_user(user_id)
+        # 切换ParserService用户
+        self.parser_service.switch_user(user_id)
         
-        def switch_user(user_id):
-            """切换用户并刷新所有数据"""
-            # 切换EntryService用户
-            msg1 = self.entry_service.switch_user(user_id)
-            # 切换ParserService用户
-            self.parser_service.switch_user(user_id)
-            
-            # 刷新Tab1数据
-            df1, count1 = self.entry_service.refresh()
-            
-            # 刷新Tab2数据 (清空显示)
-            df2_source = []
-            df2_result = self.parser_service.get_structured_dataframe()
-            
-            # 刷新Tab3数据
-            self.parser_service.load_structured_data()
-            df3 = self.parser_service.get_structured_dataframe()
-            stats = self.parser_service.get_statistics()
-            stats_text = f"""### 📊 统计信息
+        # 刷新Tab1数据
+        df1, count1 = self.entry_service.refresh()
+        
+        # 刷新Tab2数据 (清空显示)
+        df2_source = []
+        df2_result = self.parser_service.get_structured_dataframe()
+        
+        # 刷新Tab3数据
+        self.parser_service.load_structured_data()
+        df3 = self.parser_service.get_structured_dataframe()
+        stats = self.parser_service.get_statistics()
+        stats_text = f"""### 📊 统计信息
 
 - **总计**: {stats['total']} 条
 - **有商品名**: {stats['with_brand_name']} 条
@@ -289,16 +255,18 @@ class GradioUI:
 - **有规格**: {stats['with_specification']} 条
 - **有效期**: {stats['with_expiry_date']} 条
 """
-            
-            return (
-                f"✅ 当前用户: {user_id}", 
-                df1, count1, 
-                df2_source, "就绪", df2_result,
-                df3, stats_text
-            )
+        
+        return (
+            f"✅ 当前用户: {user_id}", 
+            df1, count1, 
+            df2_source, "就绪", df2_result,
+            df3, stats_text
+        )
 
+    def _bind_user_events(self):
+        """绑定用户切换事件"""
         self.user_input.submit(
-            fn=switch_user,
+            fn=self._bind_user_events_callback,
             inputs=[self.user_input],
             outputs=[
                 self.user_status,
@@ -501,10 +469,37 @@ class GradioUI:
             outputs=[self.tab3_data_df]
         )
 
-        # 页面加载时刷新Tab3
+        # 页面加载时：
+        # 1. 执行JS获取/生成User ID
+        # 2. 将ID填入user_input
+        # 3. 触发switch_user加载该用户数据
+        
+        get_user_id_js = """
+        () => {
+            let userId = localStorage.getItem('medicine_tracker_user_id');
+            if (!userId) {
+                userId = 'user_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('medicine_tracker_user_id', userId);
+            }
+            console.log('Loaded User ID:', userId);
+            return userId;
+        }
+        """
+
         self.app.load(
-            fn=refresh_data,
-            outputs=[self.tab3_data_df, self.tab3_stats]
+            fn=None,
+            inputs=None,
+            outputs=[self.user_input],
+            js=get_user_id_js
+        ).then(
+            fn=self._bind_user_events_callback, # 使用专门的回调函数
+            inputs=[self.user_input],
+            outputs=[
+                self.user_status,
+                self.dataframe, self.count_display,
+                self.tab2_source_df, self.tab2_status, self.tab2_result_df,
+                self.tab3_data_df, self.tab3_stats
+            ]
         )
 
     def _get_custom_css(self) -> str:
