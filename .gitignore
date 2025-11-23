@@ -33,6 +33,7 @@ Thumbs.db
 # User Data
 data/
 medicine_list_*.txt
+structured_medicines_*.csv
 
 # IDE
 .vscode/
