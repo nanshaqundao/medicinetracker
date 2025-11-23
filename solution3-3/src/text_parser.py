@@ -103,7 +103,10 @@ class MedicineParserService:
             return None
         
         filename = f"structured_medicines_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        filepath = Path(filename)
+        filepath = Path("data") / filename
+        
+        # 确保data目录存在
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         
         try:
             # 转换为DataFrame
