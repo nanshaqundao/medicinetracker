@@ -47,6 +47,9 @@ CLAUDE_MODEL = "claude-3-opus-20240229"  # Claude 3 Opus
 CLAUDE_MAX_TOKENS = 1024
 CLAUDE_TEMPERATURE = 0.3  # 较低的温度以获得更稳定的结果
 
+# LLM批处理配置
+LLM_BATCH_SIZE = 10  # 每批处理的条目数量，可根据需要调整
+
 # Debug logging for API Key
 if CLAUDE_API_KEY:
     masked_key = CLAUDE_API_KEY[:10] + "..." + CLAUDE_API_KEY[-5:]

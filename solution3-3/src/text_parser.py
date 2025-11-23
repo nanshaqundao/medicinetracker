@@ -117,46 +117,87 @@ class MedicineParserService:
     def parse_batch(self, entries: List[Entry]) -> Tuple[List[StructuredMedicine], List[str]]:
         """
         批量解析文本
-
+        
         Args:
             entries: Entry对象列表
-
+            
         Returns:
             (成功解析的StructuredMedicine列表, 失败的文本列表)
         """
         logger.info(f"开始批量解析: {len(entries)} 条")
-
+        
         success_list = []
         failed_list = []
-
-        for entry in entries:
+        
+        # 从配置读取批次大小
+        import config
+        batch_size = config.LLM_BATCH_SIZE
+        logger.info(f"使用批次大小: {batch_size}")
+        
+        # 分批处理
+        for i in range(0, len(entries), batch_size):
+            batch = entries[i:i+batch_size]
+            texts = [entry.text for entry in batch]
+            
             try:
-                medicine = self.parse_single_text(entry.text)
-                if medicine.is_valid():
-                    success_list.append(medicine)
-                else:
-                    logger.warning(f"解析结果无效: {entry.text}")
-                    failed_list.append(entry.text)
+                # 调用批量API
+                logger.info(f"处理批次 {i//batch_size + 1}: {len(texts)} 条")
+                parsed_results = self.llm_client.parse_medicine_batch(texts)
+                
+                # 将结果映射回原始数据
+                for j, parsed_data in enumerate(parsed_results):
+                    original_text = batch[j].text
+                    
+                    try:
+                        # 创建StructuredMedicine对象
+                        medicine = StructuredMedicine.create(
+                            original_text=original_text,
+                            drug_name=parsed_data.get('drug_name', ''),
+                            brand_name=parsed_data.get('brand_name', ''),
+                            generic_name=parsed_data.get('generic_name', ''),
+                            quantity=parsed_data.get('quantity', 0.0),
+                            unit=parsed_data.get('unit', ''),
+                            specification=parsed_data.get('specification', ''),
+                            package_count=parsed_data.get('package_count', ''),
+                            expiry_date=parsed_data.get('expiry_date', '')
+                        )
+                        
+                        if medicine.is_valid():
+                            success_list.append(medicine)
+                        else:
+                            logger.warning(f"解析结果无效: {original_text}")
+                            failed_list.append(original_text)
+                    except Exception as e:
+                        logger.error(f"创建Medicine对象失败: {original_text}, 错误: {e}")
+                        failed_list.append(original_text)
+                        
             except Exception as e:
-                logger.error(f"解析失败: {entry.text}, 错误: {e}")
-                failed_list.append(entry.text)
-
+                logger.error(f"批次处理失败: {e}", exc_info=True)
+                # 如果批次失败，将所有文本加入失败列表
+                for entry in batch:
+                    failed_list.append(entry.text)
+        
         logger.info(f"批量解析完成: 成功 {len(success_list)}, 失败 {len(failed_list)}")
         return success_list, failed_list
 
-    def parse_and_save(self, entries: List[Entry], user_id: str) -> Tuple[int, int, List[str]]:
+    def parse_and_save(self, entries: List[Entry], user_id: str, append: bool = False) -> Tuple[int, int, List[str]]:
         """
         解析并保存
-
+        
         Args:
             entries: Entry对象列表
             user_id: 用户ID
-
+            append: 是否追加模式（True=追加，False=覆盖）
+            
         Returns:
             (成功数量, 失败数量, 失败文本列表)
         """
         success_list, failed_list = self.parse_batch(entries)
         structured_list = self._get_structured_list(user_id)
+        
+        # 如果不是追加模式，先清空
+        if not append:
+            structured_list.clear()
 
         # 添加到列表
         for medicine in success_list:
@@ -211,6 +252,53 @@ class MedicineParserService:
             medicine.to_dataframe_row(i + 1)
             for i, medicine in enumerate(medicines)
         ]
+
+    def update_from_dataframe(self, user_id: str, df_data: List[List]) -> bool:
+        """
+        从Dataframe数据更新结构化列表
+        
+        Args:
+            user_id: 用户ID
+            df_data: Dataframe数据列表
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            structured_list = self._get_structured_list(user_id)
+            structured_list.clear()
+            
+            for row in df_data:
+                # headers=["#", "药名", "商品名", "学术名", "数量", "单位", "规格", "包装", "有效期", "原文", "时间"]
+                if len(row) < 10:
+                    continue
+                    
+                # 从row重建StructuredMedicine
+                # 注意：row[0]是序号，跳过
+                # 使用create方法会自动生成ID和时间（如果未提供）
+                # 这里我们尽量保留原有信息
+                
+                medicine = StructuredMedicine.create(
+                    original_text=str(row[9]) if row[9] else "",
+                    drug_name=str(row[1]) if row[1] else "",
+                    brand_name=str(row[2]) if row[2] else "",
+                    generic_name=str(row[3]) if row[3] else "",
+                    quantity=float(row[4]) if row[4] else 0.0,
+                    unit=str(row[5]) if row[5] else "",
+                    specification=str(row[6]) if row[6] else "",
+                    package_count=str(row[7]) if row[7] else "",
+                    expiry_date=str(row[8]) if row[8] else ""
+                )
+                # 如果有时间，覆盖默认生成的
+                if len(row) > 10 and row[10]:
+                    medicine.timestamp = str(row[10])
+                    
+                structured_list.add(medicine)
+                
+            return True
+        except Exception as e:
+            logger.error(f"更新结构化数据失败: {e}")
+            return False
 
     def get_statistics(self, user_id: str) -> dict:
         """获取统计信息"""

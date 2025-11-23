@@ -341,3 +341,78 @@ class EntryService:
         except IOError as e:
             logger.error(f"导出失败: {e}", exc_info=True)
             return None
+    def parse_file_to_entries(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        解析文件内容为条目列表（不保存到数据库）
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            [{'text': str, 'timestamp': str}, ...]
+        """
+        if not file_path:
+            return []
+            
+        path = Path(file_path)
+        if not path.exists():
+            return []
+            
+        entries = []
+        try:
+            # 根据扩展名处理
+            suffix = path.suffix.lower()
+            
+            if suffix == '.csv':
+                import pandas as pd
+                df = pd.read_csv(path)
+                # 尝试查找可能的文本列
+                text_col = None
+                for col in df.columns:
+                    if 'text' in str(col).lower() or 'content' in str(col).lower() or '药品' in str(col) or 'name' in str(col).lower():
+                        text_col = col
+                        break
+                # 如果没找到，默认用第一列
+                if not text_col and len(df.columns) > 0:
+                    text_col = df.columns[0]
+                    
+                if text_col:
+                    for val in df[text_col]:
+                        if val and str(val).strip():
+                            entries.append({
+                                'text': str(val).strip(),
+                                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            })
+                            
+            elif suffix == '.json':
+                import json
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and 'text' in item:
+                                entries.append({
+                                    'text': str(item['text']).strip(),
+                                    'timestamp': item.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                                })
+                            elif isinstance(item, str):
+                                entries.append({
+                                    'text': item.strip(),
+                                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                })
+                                
+            else: # 默认当做文本文件处理
+                with open(path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip():
+                            entries.append({
+                                'text': line.strip(),
+                                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            })
+                            
+            logger.info(f"从文件解析出 {len(entries)} 条数据: {file_path}")
+            return entries
+            
+        except Exception as e:
+            logger.error(f"解析文件失败: {e}", exc_info=True)
+            return []

@@ -48,17 +48,16 @@ class GradioUI:
             gr.Markdown("---")
 
             # 创建三个Tab
-            with gr.Tabs():
-                # ========== Tab 1: 语音收集 ==========
-                with gr.Tab("📝 语音收集"):
+            with gr.Tabs() as tabs:
+                with gr.Tab("📝 语音采集") as tab1:
                     self._build_tab1_voice_collection()
-
-                # ========== Tab 2: 智能结构化 ==========
-                with gr.Tab("🧠 智能结构化"):
+                
+                with gr.Tab("🧠 智能结构化") as tab2:
+                    self.tab2 = tab2
                     self._build_tab2_structuring()
-
-                # ========== Tab 3: 数据分析 ==========
-                with gr.Tab("📊 数据分析"):
+                    
+                with gr.Tab("📊 数据分析") as tab3:
+                    self.tab3 = tab3
                     self._build_tab3_analysis()
 
             self.app = app
@@ -153,14 +152,34 @@ class GradioUI:
 
             with gr.Column(scale=1):
                 gr.Markdown("### ⚙️ 操作")
-                self.tab2_load_btn = gr.Button("🔄 加载原始数据", variant="secondary", size="lg")
-                self.tab2_parse_btn = gr.Button("🚀 开始智能解析", variant="primary", size="lg")
+
                 self.tab2_status = gr.Textbox(
                     label="处理状态",
                     value="就绪",
                     interactive=False,
                     lines=5
                 )
+
+                gr.Markdown("### 📥 数据加载")
+                with gr.Row():
+                    self.tab2_load_voice_btn = gr.Button("🎤 加载语音数据 (覆盖)", variant="secondary")
+                    self.tab2_clear_pending_btn = gr.Button("🗑️ 清空待处理数据", variant="stop")
+                
+                with gr.Row():
+                    self.tab2_import_file = gr.File(
+                        label="导入文件 (CSV/JSON/TXT)",
+                        file_types=[".csv", ".json", ".txt"],
+                        file_count="single"
+                    )
+                self.tab2_attach_file_btn = gr.Button("📎 附加文件数据 (Append)", variant="secondary")
+
+                gr.Markdown("### 🚀 智能解析")
+                self.tab2_append_checkbox = gr.Checkbox(
+                    label="追加到现有结果 (默认覆盖)",
+                    value=False,
+                    info="选中后，解析结果将追加到下方表格，而不是覆盖现有内容"
+                )
+                self.tab2_parse_btn = gr.Button("🚀 开始智能解析", variant="primary", size="lg")
 
         gr.Markdown("---")
         gr.Markdown("### 📋 结构化结果")
@@ -357,25 +376,84 @@ class GradioUI:
     def _bind_tab2_events(self):
         """绑定Tab2事件"""
 
-        def load_raw_data(user_id):
-            """加载原始数据"""
+        def load_voice_data(user_id, current_data):
+            """加载语音数据并追加"""
+            print(f"DEBUG: load_voice_data called with user_id='{user_id}'")
             entry_list = self.entry_service._get_entry_list(user_id)
             entries = entry_list.get_all()
+            print(f"DEBUG: Found {len(entries)} entries for user '{user_id}'")
             if not entries:
-                return [], "⚠️ 没有原始数据"
+                return current_data, f"⚠️ 没有语音数据 (User: {user_id})"
 
-            # 转换为简化的dataframe格式
-            df_data = [[i+1, e.text, e.timestamp] for i, e in enumerate(entries)]
-            return df_data, f"✅ 已加载 {len(entries)} 条原始数据"
+            # 处理current_data，确保它是列表
+            import pandas as pd
+            if isinstance(current_data, pd.DataFrame):
+                current_data_list = current_data.values.tolist()
+            elif isinstance(current_data, list):
+                current_data_list = current_data
+            else:
+                current_data_list = []
 
-        def parse_all(user_id):
+            # 转换为dataframe格式 [序号, 文本, 时间]
+            # start_index = len(current_data_list) # Overwrite mode starts from 0
+            new_data = [[i + 1, e.text, e.timestamp] for i, e in enumerate(entries)]
+            
+            # 覆盖现有数据
+            updated_data = new_data
+            return updated_data, f"✅ 已加载 {len(entries)} 条语音数据 (User: {user_id})"
+
+        def attach_file_data(file_obj, current_data):
+            """附加文件数据"""
+            if not file_obj:
+                return current_data, "⚠️ 请先上传文件"
+                
+            entries = self.entry_service.parse_file_to_entries(file_obj.name)
+            if not entries:
+                return current_data, "⚠️ 文件解析失败或为空"
+                
+            # 处理current_data，确保它是列表
+            import pandas as pd
+            if isinstance(current_data, pd.DataFrame):
+                current_data_list = current_data.values.tolist()
+            elif isinstance(current_data, list):
+                current_data_list = current_data
+            else:
+                current_data_list = []
+
+            # 转换为dataframe格式
+            start_index = len(current_data_list)
+            new_data = [[start_index + i + 1, e['text'], e['timestamp']] for i, e in enumerate(entries)]
+            
+            updated_data = current_data_list + new_data
+            return updated_data, f"✅ 已追加 {len(entries)} 条文件数据"
+
+        def clear_pending_data():
+            """清空待处理数据"""
+            return [], "✅ 待处理数据已清空"
+
+        def parse_all(user_id, source_data, append_mode):
             """解析所有原始数据"""
-            entry_list = self.entry_service._get_entry_list(user_id)
-            entries = entry_list.get_all()
-            if not entries:
+            # 处理source_data，确保它是列表
+            import pandas as pd
+            if isinstance(source_data, pd.DataFrame):
+                source_data_list = source_data.values.tolist()
+            elif isinstance(source_data, list):
+                source_data_list = source_data
+            else:
+                source_data_list = []
+
+            if not source_data_list or len(source_data_list) == 0:
                 return [], "⚠️ 没有数据需要解析", self.parser_service.get_structured_dataframe(user_id)
 
-            success, failed, failed_texts = self.parser_service.parse_and_save(entries, user_id)
+            # 从source_data重建Entry对象列表
+            # source_data format: [序号, 文本, 时间]
+            from .models import Entry
+            entries = []
+            for row in source_data_list:
+                if len(row) >= 2:
+                    entries.append(Entry.create(row[1])) # 重建Entry，ID会重新生成，但这不影响解析
+
+            success, failed, failed_texts = self.parser_service.parse_and_save(entries, user_id, append=append_mode)
 
             status_msg = f"✅ 解析完成！\n成功: {success} 条\n失败: {failed} 条"
             if failed_texts:
@@ -383,31 +461,68 @@ class GradioUI:
 
             return [], status_msg, self.parser_service.get_structured_dataframe(user_id)
 
-        def save_structured(user_id):
+        def save_structured(user_id, df_data):
             """保存结构化数据"""
-            if self.parser_service.save_structured_data(user_id):
-                structured_list = self.parser_service._get_structured_list(user_id)
-                count = structured_list.count()
-                return f"✅ 已保存 {count} 条结构化数据"
+            # 处理df_data，确保它是列表
+            import pandas as pd
+            if isinstance(df_data, pd.DataFrame):
+                df_data_list = df_data.values.tolist()
+            elif isinstance(df_data, list):
+                df_data_list = df_data
             else:
-                return "❌ 保存失败"
+                df_data_list = []
+
+            # 先从表格更新数据
+            if self.parser_service.update_from_dataframe(user_id, df_data_list):
+                # 然后保存到文件
+                if self.parser_service.save_structured_data(user_id):
+                    structured_list = self.parser_service._get_structured_list(user_id)
+                    count = structured_list.count()
+                    return f"✅ 已保存 {count} 条结构化数据"
+            
+            return "❌ 保存失败"
+
+        def on_tab2_select(user_id):
+            """Tab2选中时自动加载数据"""
+            print(f"DEBUG: on_tab2_select called with user_id='{user_id}'")
+            df = self.parser_service.get_structured_dataframe(user_id)
+            print(f"DEBUG: on_tab2_select returning {len(df)} rows")
+            return df
 
         # 绑定事件
-        self.tab2_load_btn.click(
-            fn=load_raw_data,
+        self.tab2.select(
+            fn=on_tab2_select,
             inputs=[self.user_input],
+            outputs=[self.tab2_result_df]
+        )
+
+        self.tab2_load_voice_btn.click(
+            fn=load_voice_data,
+            inputs=[self.user_input, self.tab2_source_df],
+            outputs=[self.tab2_source_df, self.tab2_status]
+        )
+
+        self.tab2_attach_file_btn.click(
+            fn=attach_file_data,
+            inputs=[self.tab2_import_file, self.tab2_source_df],
+            outputs=[self.tab2_source_df, self.tab2_status]
+        )
+
+        self.tab2_clear_pending_btn.click(
+            fn=clear_pending_data,
+            inputs=[],
             outputs=[self.tab2_source_df, self.tab2_status]
         )
 
         self.tab2_parse_btn.click(
             fn=parse_all,
-            inputs=[self.user_input],
+            inputs=[self.user_input, self.tab2_source_df, self.tab2_append_checkbox],
             outputs=[self.tab2_source_df, self.tab2_status, self.tab2_result_df]
         )
 
         self.tab2_save_btn.click(
             fn=save_structured,
-            inputs=[self.user_input],
+            inputs=[self.user_input, self.tab2_result_df],
             outputs=[self.tab2_result_status]
         )
 
