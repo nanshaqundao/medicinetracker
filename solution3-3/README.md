@@ -50,16 +50,20 @@ python app.py
 如果您更喜欢使用 Docker：
 
 ```bash
-# 1. 构建镜像
+# 1. 创建环境变量文件
+# 复制示例文件并编辑
+cp .env.example .env
+# 然后编辑 .env 文件，填入您的 CLAUDE_API_KEY
+
+# 2. 构建镜像
 docker build -t medicinetracker .
 
-# 2. 运行容器（传递 Windows 环境变量）
-# PowerShell:
-docker run -p 7860:7860 -v ${PWD}/data:/app/data -e CLAUDE_API_KEY=$env:CLAUDE_API_KEY medicinetracker
-
-# CMD:
-# docker run -p 7860:7860 -v %cd%/data:/app/data -e CLAUDE_API_KEY=%CLAUDE_API_KEY% medicinetracker
+# 3. 运行容器
+docker run -p 7860:7860 -v ${PWD}/data:/app/data --env-file .env medicinetracker
 ```
+
+> [!IMPORTANT]
+> 使用Docker时必须先创建 `.env` 文件并配置 `CLAUDE_API_KEY`，否则应用将无法正常工作。
 
 ---
 
