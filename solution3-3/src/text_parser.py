@@ -83,6 +83,42 @@ class MedicineParserService:
             logger.info(f"保存结构化数据成功: {user_id}, {len(data)} 条")
         return result
 
+    def export_to_csv(self, user_id: str) -> str:
+        """
+        导出结构化数据为CSV文件
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            导出的文件路径，如果没有数据则返回None
+        """
+        from pathlib import Path
+        from datetime import datetime
+        import pandas as pd
+        
+        structured_list = self._get_structured_list(user_id)
+        if not structured_list or structured_list.count() == 0:
+            logger.warning("导出失败: 没有数据")
+            return None
+        
+        filename = f"structured_medicines_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        filepath = Path(filename)
+        
+        try:
+            # 转换为DataFrame
+            df_data = structured_list.to_dataframe()
+            headers = ["#", "药名", "商品名", "学术名", "数量", "单位", "规格", "包装", "有效期", "原文", "时间"]
+            df = pd.DataFrame(df_data, columns=headers)
+            
+            # 导出CSV
+            df.to_csv(filepath, index=False, encoding='utf-8-sig')  # utf-8-sig以支持Excel打开
+            logger.info(f"导出成功: {filepath}, {structured_list.count()} 条")
+            return str(filepath)
+        except Exception as e:
+            logger.error(f"导出失败: {e}", exc_info=True)
+            return None
+
     def parse_single_text(self, text: str) -> StructuredMedicine:
         """
         解析单条文本

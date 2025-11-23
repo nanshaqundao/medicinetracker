@@ -198,6 +198,7 @@ class GradioUI:
             self.tab2_export_btn = gr.Button("📥 导出CSV", variant="secondary")
 
         self.tab2_result_status = gr.Textbox(label="结果", interactive=False, show_label=False)
+        self.tab2_file_output = gr.File(label="下载文件")
 
     def _build_tab3_analysis(self):
         """构建Tab 3: 数据分析"""
@@ -524,6 +525,12 @@ class GradioUI:
             fn=save_structured,
             inputs=[self.user_input, self.tab2_result_df],
             outputs=[self.tab2_result_status]
+        )
+
+        self.tab2_export_btn.click(
+            fn=self.parser_service.export_to_csv,
+            inputs=[self.user_input],
+            outputs=[self.tab2_file_output]
         )
 
     def _bind_tab3_events(self):
